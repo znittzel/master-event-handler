@@ -7,17 +7,17 @@
  * Class Event<T>.
  * Is used by Slave, Multi -and MasterEventHandler. Can be used as a custom event handler, just change to "public"
  */
-private class Event<T> {
+public class REvent<T> {
     
-    typealias EventHandler = T -> ()
+    typealias EventHandler = (T) -> ()
     
     private var eventHandlers = [EventHandler]()
     
-    func addHandler(handler: EventHandler) {
+    func addHandler(_ handler: @escaping EventHandler) {
         eventHandlers.append(handler)
     }
     
-    func raise(data: T) {
+    func raise(_ data: T) {
         for handler in eventHandlers {
             handler(data)
         }
@@ -28,14 +28,14 @@ private class Event<T> {
  * Class SlaveEventHandler.
  * Is used by MasterEventHandler. Can be used as a single object and would work the way same as a MasterEventHandler -slave, just change to "public".
  */
-private class SlaveEventHandler {
-    private var eventHandler = Event<NSError?>()
-    private var numberToFetch = 1
+public class SlaveEventHandler {
+    private var eventHandler = REvent<[String]?>()
+    public var numberToFetch = 1
     private var numberOfFetches = 0
     /*
      * Loads an event on creating object.
      */
-    init(event: (NSError?) -> Void, numberToFetch: Int = 1) {
+    init(event: @escaping ([String]?) -> Void, numberToFetch: Int = 1) {
         load(event)
         self.numberToFetch = numberToFetch
     }
@@ -43,14 +43,14 @@ private class SlaveEventHandler {
     /*
      * Loads an event.
      */
-    func load(event: (NSError?) -> Void) {
+    func load(_ event: @escaping ([String]?) -> Void) {
         eventHandler.addHandler(event)
     }
     
     /*
      * Fires all the loaded events.
      */
-    func fire(error: NSError?) {
+    func fire(_ error: [String]?) {
         eventHandler.raise(error)
     }
     
@@ -94,17 +94,17 @@ private class MultiEventHandlerNames : Hashable {
 }
 
 private class MultiEventHandler {
-// MARK: PRIVATE VARS
+    // MARK: PRIVATE VARS
     private var multipleSlavesFired: [String : Bool]
     private var slaveEventHandler: SlaveEventHandler
     
-// MARK: INIT FUNCTIONS
-    init(event: (NSError?) -> Void) {
+    // MARK: INIT FUNCTIONS
+    init(_ event: @escaping ([String]?) -> Void) {
         self.multipleSlavesFired = [String : Bool]()
         self.slaveEventHandler = SlaveEventHandler(event: event)
     }
     
-// MARK: FUNCIONS
+    // MARK: FUNCIONS
     /*
      * Adds a slave name to multipleSlavesFired. Returns true if appending is successfull.
      */
@@ -145,66 +145,66 @@ private class MultiEventHandler {
 
 
 /**
- * Class MasterEventHandler. 
- * Load master or a custom slave with function(s). Call fetch* with your own function to finally call "fire()" and the custom slaves will fire. 
+ * Class MasterEventHandler.
+ * Load master or a custom slave with function(s). Call fetch* with your own function to finally call "fire()" and the custom slaves will fire.
  * When all slaves has been fired the master will fire. You can fire the master manually by calling "fire()" in the "fetchMaster()" -function.
  *
- * Example: 
-        // Initialize a MasterHandler
-            let eventHandler = MasterEventHandler()
-
-        // Load a slave by
-           eventHandler.loadSlave("example", event: { 
-                (error) in
-                if error == nil {
-                    // Do something with your fetched data
-                } else {
-                    // Handle error
-                }
-            })
+ * Example:
+ // Initialize a MasterHandler
+ let eventHandler = MasterEventHandler()
  
-        // Fetch a slave by
-           eventHandler.fetchSlave("")
+ // Load a slave by
+ eventHandler.loadSlave("example", event: {
+ (error) in
+ if error == nil {
+ // Do something with your fetched data
+ } else {
+ // Handle error
+ }
+ })
+ 
+ // Fetch a slave by
+ eventHandler.fetchSlave("")
  
  
  */
 class MasterEventHandler {
-// MARK: PRIVATE VARS
-    private var masterHandler : Event<NSError?>
-    private var masterError : NSError?
-    private var slaveErrors : [String: NSError]
+    // MARK: PRIVATE VARS
+    private var masterHandler : REvent<[String]?>
+    private var masterError : [String]?
+    private var slaveErrors : [String: [String]]
     private var slaveHandler : [String : SlaveEventHandler]
     private var numberOfSlavesFired : Int
-
-// MARK: EXCLUSIVE PRIVATE VARS
+    
+    // MARK: EXCLUSIVE PRIVATE VARS
     private var multiEventHandler: [MultiEventHandlerNames: MultiEventHandler]
     
-// MARK: INIT FUNCITONS
+    // MARK: INIT FUNCITONS
     init() {
-        masterHandler = Event<NSError?>()
+        masterHandler = REvent<[String]?>()
         slaveHandler = [String : SlaveEventHandler]()
-        slaveErrors = [String: NSError]()
+        slaveErrors = [String: [String]]()
         multiEventHandler = [MultiEventHandlerNames: MultiEventHandler]()
         
         numberOfSlavesFired = 0
     }
     
-// MARK: PRIVATE FUNCTIONS
+    // MARK: PRIVATE FUNCTIONS
     /*
      * Resets the MasterEventHandler to when it was first initialized.
      */
     private func __reset() {
-        self.masterHandler = Event<NSError?>()
+        self.masterHandler = REvent<[String]?>()
         self.slaveHandler = [String : SlaveEventHandler]()
         self.masterError = nil
         numberOfSlavesFired = 0
     }
-
-// MARK: PUBLIC FUNCTIONS
+    
+    // MARK: PUBLIC FUNCTIONS
     /*
      * Loads the master with an event.
      */
-    func loadMaster (event: (NSError?) -> Void) {
+    func loadMaster (_ event: @escaping ([String]?) -> Void) {
         masterHandler.addHandler(event)
     }
     
@@ -214,7 +214,15 @@ class MasterEventHandler {
     func fireMasterIfReady() -> Bool {
         var result = false
         if self.numberOfSlavesFired == self.slaveHandler.count {
-            self.masterHandler.raise(self.masterError)
+            var slaveErrors = [String]()
+            
+            for (_, errors) in self.slaveErrors {
+                for error in errors {
+                    slaveErrors.append(error)
+                }
+            }
+            
+            self.masterHandler.raise(slaveErrors)
             self.__reset()
             
             result = true
@@ -226,7 +234,7 @@ class MasterEventHandler {
     /*
      * Loads a custom made slave with an event. If numberToFetch is set, then it wont fire until numberToFetch has been reached
      */
-    func loadSlave (name: String, numberToFetch: Int = 1, event: (NSError?) -> Void) -> SlaveEventHandler {
+    func loadSlave (name: String, numberToFetch: Int = 1, event: @escaping ([String]?) -> Void) -> SlaveEventHandler {
         if slaveHandler[name] == nil {
             slaveHandler[name] = SlaveEventHandler(event: event, numberToFetch: numberToFetch)
         } else {
@@ -239,7 +247,7 @@ class MasterEventHandler {
     /*
      * Loads a multi load. Will not load if slaves doesn't exists. If the slaves been fired, this will fire. Returns true successfully loaded.
      */
-    func loadAMultiSlave(slaveNames: [String], event: (NSError?) -> Void) -> Bool {
+    func loadAMultiSlave(slaveNames: [String], event: @escaping ([String]?) -> Void) -> Bool {
         var result = false
         
         if !slaveNames.isEmpty {
@@ -264,11 +272,11 @@ class MasterEventHandler {
                 // Instansiate a name handler
                 let multiSlaveName = MultiEventHandlerNames(names: multiSlaveStringNames)
                 
-                self.multiEventHandler[multiSlaveName] = MultiEventHandler(event: event)
+                self.multiEventHandler[multiSlaveName] = MultiEventHandler(event)
                 
                 // Load 'em up
                 for slaveName in slaveNames {
-                    self.multiEventHandler[multiSlaveName]!.addSlaveName(slaveName)
+                    _ = self.multiEventHandler[multiSlaveName]!.addSlaveName(name: slaveName)
                 }
                 
                 result = true
@@ -282,7 +290,7 @@ class MasterEventHandler {
     /*
      * Will fire multiple shots if all assigned slaves to MultiEventHandler has been fired.
      */
-    internal func fireMultipleSlavesIfReady(name: String) -> Bool {
+    internal func fireMultipleSlavesIfReady(_ name: String) -> Bool {
         var result = false
         
         let multiEventHandlers = self.multiEventHandler.filter { (item) -> Bool in
@@ -291,10 +299,10 @@ class MasterEventHandler {
         
         if !multiEventHandlers.isEmpty {
             for multiEventHandler in multiEventHandlers {
-                result = multiEventHandler.1.willFireIfAllFired(name)
+                result = multiEventHandler.1.willFireIfAllFired(name: name)
                 
                 if result {
-                    self.multiEventHandler.removeValueForKey(multiEventHandler.0)
+                    self.multiEventHandler.removeValue(forKey: multiEventHandler.0)
                 }
             }
         }
@@ -305,21 +313,21 @@ class MasterEventHandler {
     /*
      * Runs the callback function and fires the slave. If all the slaves has been fired, the master will fire.
      */
-    func fetchSlave (name: String, callback: (index: Int, fire: (NSError?) -> Void) -> Void) {
+    func fetchSlave (name: String, callback: (_ index: Int, _ fire: @escaping ([String]?) -> Void) -> Void) {
         if slaveHandler[name] != nil {
             if let slave = self.slaveHandler[name] {
                 for i in 0..<slave.numberToFetch {
-                    callback(index: i, fire: { (error) in
+                    callback(i, { (error) in
                         
                         // Increase number of fetches to this slave
                         slave.increaseNumberOfFetches()
                         
                         if slave.isReady() {
-                            self.fireSlaveManually(name, error: error)
+                            _ = self.fireSlaveManually(name: name, error: error)
                             if error != nil {
                                 self.masterError = error
                             }
-                        }                        
+                        }
                     })
                 }
             }
@@ -329,38 +337,38 @@ class MasterEventHandler {
     /*
      * Runs the callback function and fires the slave. If all the slaves has been fired, the master will fire.
      */
-    func fetchSlave (slaveHandler: SlaveEventHandler, callback: (index: Int, fire: (NSError?) -> Void) -> Void) {
-        if let slave = self.slaveHandler {
-            for i in 0..<slave.numberToFetch {
-                callback(index: i, fire: { (error) in
-                    
-                    // Increase number of fetches to this slave
-                    slave.increaseNumberOfFetches()
-                    
-                    if slave.isReady() {
-                        self.fireSlaveManually(name, error: error)
-                        if error != nil {
-                            self.masterError = error
-                        }
-                    }
-                })
-            }
-        }
-    }
+    /*func fetchSlave (slaveHandler: SlaveEventHandler, callback: (_ index: Int, _ fire: (Error?) -> Void) -> Void) {
+     if let slave = self.slaveHandler {
+     for i in 0..<slave.numberToFetch {
+     callback(index: i, fire: { (error) in
+     
+     // Increase number of fetches to this slave
+     slave.increaseNumberOfFetches()
+     
+     if slave.isReady() {
+     self.fireSlaveManually(name, error: error)
+     if error != nil {
+     self.masterError = error
+     }
+     }
+     })
+     }
+     }
+     }*/
     
     /*
      * Loads the master with and event and then fires it on callback.
      */
-    func loadAndFetchMaster(event: (NSError?) -> Void, callback: (fire: (NSError?) -> Void) -> Void) {
+    func loadAndFetchMaster(event: @escaping ([String]?) -> Void, callback: (_ fire: ([String]?) -> Void) -> Void) {
         loadMaster(event)
-        fetchMaster(callback)
+        fetchMaster(callback: callback)
     }
     
     /*
      * Runs the callback function and fires the master.
      */
-    func fetchMaster(callback: (fire: (NSError?) -> Void) -> Void) {
-        callback(fire: { (error) in
+    func fetchMaster(callback: (_ fire: ([String]?) -> Void) -> Void) {
+        callback({ (error) in
             self.masterHandler.raise(error)
             self.__reset()
         })
@@ -369,7 +377,7 @@ class MasterEventHandler {
     /*
      * Fires slave manually. Returns true if fired
      */
-    func fireSlaveManually(name: String, error: NSError?) -> Bool {
+    func fireSlaveManually(name: String, error: [String]?) -> Bool {
         var result = false
         if let slave = self.slaveHandler[name] {
             slave.fire(error)
@@ -380,8 +388,8 @@ class MasterEventHandler {
             
             self.numberOfSlavesFired += 1
             
-            self.fireMasterIfReady()
-            self.fireMultipleSlavesIfReady(name)
+            _ = self.fireMasterIfReady()
+            _ = self.fireMultipleSlavesIfReady(name)
             
             result = true
         }
@@ -392,7 +400,7 @@ class MasterEventHandler {
     /*
      * Returns all collected errors from Slaves
      */
-    func getAllErrors() -> [String: NSError] {
+    func getAllErrors() -> [String: [String]] {
         return self.slaveErrors
     }
 }
